@@ -1,5 +1,5 @@
 // Change VERSION with each published release. Cache is scoped to this repository.
-const VERSION = '2026-09-26-1';
+const VERSION = '2026-09-26-3';
 const PREFIX = 'liga-cockpit:' + self.registration.scope + ':';
 const CACHE = PREFIX + VERSION;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './pwa.js', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
