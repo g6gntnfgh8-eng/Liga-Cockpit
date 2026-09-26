@@ -14,6 +14,30 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Liga-Cockpit">
 <style>body{padding-bottom:env(safe-area-inset-bottom)}nav{overflow-x:auto;-webkit-overflow-scrolling:touch}nav button{flex-shrink:0}.panel{min-width:0}.grid2>*{min-width:0}#webAppInfo{margin:16px 20px}a{color:#ffad7f}@media(max-width:600px){input,select,textarea{font-size:16px!important}.topbar{padding-top:max(18px,env(safe-area-inset-top))}.summaryline{gap:10px;flex-wrap:wrap}.summaryline b{white-space:normal}.pitchrow .slot{min-width:0}}</style>
+<style>
+/* Allow grid children and all five midfield slots to shrink within the viewport. */
+#lineup .layout,#lineup .layout>*,#lineup .panel,#pitch,#bench{min-width:0;max-width:100%}
+#pitch{width:100%}
+#pitch .pitchrow{min-width:0;width:100%;gap:6px}
+#pitch .slot{flex:1 1 0;width:0;min-width:0;max-width:145px;overflow:hidden}
+#pitch .slot strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pitch .slot small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pitch .slot select{width:100%;max-width:100%;min-width:0}
+#bench .benchplayer{min-width:0;flex-wrap:wrap}
+@media(max-width:600px){
+ #lineup .layout{grid-template-columns:minmax(0,1fr)}
+ #lineup .panel{padding:8px}
+ #pitch{padding:16px 4px;min-height:480px;background:repeating-linear-gradient(0deg,#138452 0,#138452 60px,#16945c 60px,#16945c 120px);border-color:#68d49c}
+ #pitch .pitchrow{gap:3px}
+ #pitch .slot{padding:6px 2px;border-radius:6px;background:#093d2980;border-color:#ffffff25}
+ #pitch .jersey{width:26px;height:26px;font-size:9px;margin-bottom:4px;border-radius:50%;background:#152f27;border:1px solid #a4efc3}
+ #pitch .slot strong{font-size:10px}
+ #pitch .slot small{font-size:8px}
+ #pitch .slot select{font-size:10px!important;padding:3px 0;min-height:36px}
+ #pitch .slot .remove{font-size:10px;padding:3px 1px;min-height:32px;width:100%}
+}
+
+</style>
 </head>
 <body>
 <header><div class="topbar"><div class="logo" aria-hidden="true">K</div><div><div class="brand">DEIN LIGA-COCKPIT</div><div class="eyebrow">Privater Planer · Web-App</div></div><div class="local">Lokal gespeichert</div></div><nav aria-label="Hauptnavigation"><button data-tab="team" class="active">Mein Team</button><button data-tab="lineup">Startelf</button><button data-tab="market">Transfermarkt</button><button data-tab="predictions">Prognosen</button><button data-tab="advice">Empfehlungen</button><button data-tab="finance">Cash & Transfers</button><button data-tab="data">Daten & Screenshots</button></nav></header>
@@ -75,7 +99,7 @@ function sanitize(raw){
   const days=new Set();let history=p.history??[];
   if(!Array.isArray(history)||history.length>5000)throw Error('Ungültiger Verlauf.');
   history=history.map(h=>{if(!h||!validDate(h.date)||h.date>today()||days.has(h.date)||!isNum(h.value)||h.value<0||h.value>10000||h.delta!=null&&(!isNum(h.delta)||!Number.isInteger(h.delta)||Math.abs(h.delta)>1e10)||h.delta!=null&&Math.round(h.value*1e6)-h.delta<0)throw Error('Ungültiger Tageswert.');days.add(h.date);return {date:h.date,value:h.value,delta:h.delta??null};}).sort((a,b)=>a.date.localeCompare(b.date));
-  return {id:p.id,name:p.name.slice(0,70),club:p.club.slice(0,50),pos:p.pos,status:p.status,owner:typeof p.owner==='string'?p.owner.slice(0,100):'',value:p.value,purchasePrice:p.purchasePrice??null,valueDate:validDate(p.valueDate)?p.valueDate:null,offer:p.offer??null,planned:!!p.planned,listed:p.listed===true||p.status==='watch',note:typeof p.note==='string'?p.note.slice(0,250):'',history,chartContext:cleanChartContext(p.chartContext)};
+  return {id:p.id,name:p.name.slice(0,70),club:p.club.slice(0,50),pos:p.pos,status:p.status,owner:typeof p.owner==='string'?p.owner.slice(0,100):'',value:p.value,purchasePrice:p.purchasePrice??null,valueDate:validDate(p.valueDate)?p.valueDate:null,offer:p.offer??null,planned:!!p.planned,listed:p.listed===true||p.status==='watch',note:typeof p.note==='string'?p.note.slice(0,250):'',history,chartContext:cleanChartContext(p.chartContext),forecasts:cleanForecasts(p.forecasts)};
  });
  const cash=raw.cash==null||raw.cash===''?'':String(raw.cash);if(cash!==''&&!Number.isFinite(Number(cash)))throw Error('Ungültiger Kontostand.');
  const formation=Object.hasOwn(FORMATIONS,raw.formation)?raw.formation:'4-4-2';
@@ -150,9 +174,9 @@ function recordHistory(p,date,value,delta){
  if(!isNum(value)||value<0||value>10000)throw Error('Bitte einen gültigen Marktwert eintragen.');value=round(value);
  if(delta!=null&&Math.round(value*1e6)-delta<0)throw Error('Die Änderung würde einen negativen Vortagswert ergeben. Bitte prüfen.');
  // KICKBASE rounds daily changes: an explicit market value is authoritative.
- p.history=p.history.filter(h=>h.date!==date).concat({date,value,delta}).sort((a,b)=>a.date.localeCompare(b.date));const last=p.history.at(-1);if(date===last.date){p.value=last.value;p.valueDate=last.date;}
+ invalidateForecasts(p,date);p.history=p.history.filter(h=>h.date!==date).concat({date,value,delta}).sort((a,b)=>a.date.localeCompare(b.date));const last=p.history.at(-1);if(date===last.date){p.value=last.value;p.valueDate=last.date;}
 }
-function deleteHistoryDay(p,date){p.history=p.history.filter(h=>h.date!==date);if(p.valueDate===date)p.valueDate=null;}
+function deleteHistoryDay(p,date){invalidateForecasts(p,date);p.history=p.history.filter(h=>h.date!==date);if(p.valueDate===date)p.valueDate=null;}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-delete-history]');if(!button)return;const p=byId($('historyId').value),date=button.dataset.deleteHistory;if(!p||!confirm(`Tageswert vom ${dateLabel(date)} für ${p.name} löschen? Marktwert und 24-h-Änderung dieses Tages werden aus dem Verlauf entfernt. Der aktuelle Kader-Marktwert bleibt erhalten und kann separat korrigiert werden.`))return;deleteHistoryDay(p,date);save();render();fillHistoryDay();renderHistory();toast('Tageswert gelöscht. Aktuellen Marktwert bei Bedarf korrigieren.');});
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;if(d.tab)showTab(d.tab);if(d.close)$(d.close).close();if(d.edit)editPlayer(d.edit);if(d.history)openHistory(d.history);if(d.historyDay){$('historyDate').value=d.historyDay;fillHistoryDay();}if(d.bench!=null){state.lineup[Number(d.bench)]=null;save();render();}if(d.lineupAdd){const p=byId(d.lineupAdd),i=slotPositions(state.formation).findIndex((pos,i)=>pos===p.pos&&!state.lineup[i]);if(i<0)toast('Kein freier Platz für diese Position. Wähle im Spielfeld einen Spieler zum Tauschen.');else placePlayer(p.id,i);}});
 document.addEventListener('change',e=>{const d=e.target.dataset;if(d.plan){const p=byId(d.plan);p.planned=e.target.checked;save();render();}if(d.offer){const p=byId(d.offer),v=e.target.value===''?null:Number(e.target.value);if(v!=null&&(!Number.isFinite(v)||v<0)){toast('Bitte einen gültigen Preis eintragen.');e.target.value=p.offer??'';return;}p.offer=v;save();render();}if(d.slotSelect!=null){if(e.target.value)placePlayer(e.target.value,Number(d.slotSelect));else{state.lineup[Number(d.slotSelect)]=null;save();render();}}});
@@ -222,6 +246,35 @@ function chartContextHTML(p){
 function defaultSignals(){return [];}
 function cleanSignals(raw){return (Array.isArray(raw)?raw:defaultSignals()).slice(0,1000).filter(n=>n&&typeof n.player==='string'&&typeof n.title==='string'&&validDate(n.date)&&n.date<=today()&&['report','rumor'].includes(n.kind)&&[-1,0,1].includes(n.impact)&&safeNewsURL(n.url)).map(n=>({id:String(n.id||crypto.randomUUID()),player:n.player.slice(0,70),title:n.title.slice(0,180),url:safeNewsURL(n.url),date:n.date,kind:n.kind,impact:n.impact,note:String(n.note||'').slice(0,400)}));}
 function safeNewsURL(s){try{const u=new URL(s);return ['https:','http:'].includes(u.protocol)&&!u.username&&!u.password?u.href:'';}catch{return '';}}
+function nextForecastDay(date){return new Date((dayNumber(date)+1)*86400000).toISOString().slice(0,10);}
+function cleanForecasts(raw){
+ const seen=new Set();return (Array.isArray(raw)?raw:[]).filter(f=>{
+ if(!f||!validDate(f.target)||!validDate(f.sourceDate)||f.target!==nextForecastDay(f.sourceDate)||seen.has(f.target)||![f.base,f.low,f.high].every(isNum)||f.low>f.high||typeof f.createdAt!=='string'||!Number.isFinite(Date.parse(f.createdAt)))return false;
+ seen.add(f.target);return true;
+ }).slice(-5000).map(f=>({target:f.target,sourceDate:f.sourceDate,createdAt:f.createdAt,base:f.base,low:f.low,high:f.high,invalid:!!f.invalid}));
+}
+function captureForecasts(){
+ let changed=false;
+ for(const p of state.players.filter(p=>p.status==='mine')){
+ const f=prediction(p);if(!f.usable)continue;
+ const target=nextForecastDay(f.last.date);p.forecasts=p.forecasts||[];
+ if(target<today()||p.history.some(h=>h.date===target)||p.forecasts.some(s=>s.target===target))continue;
+ p.forecasts.push({target,sourceDate:f.last.date,createdAt:new Date().toISOString(),base:f.base,low:f.low,high:f.high,invalid:false});changed=true;
+ }if(changed)save();
+}
+function invalidateForecasts(p,date){
+ // Retain the original forecast for audit; never regenerate a better hindsight prediction.
+ for(const f of p.forecasts||[])if(f.sourceDate>=date)f.invalid=true;
+}
+function forecastTrackingHTML(p){
+ const forecasts=p.forecasts||[],observed=deltas(p);
+ const comparisons=forecasts.map(f=>({f,h:observed.find(h=>h.date===f.target&&h.delta!=null)})).filter(x=>x.h).sort((a,b)=>b.f.target.localeCompare(a.f.target));
+ const pending=forecasts.filter(f=>!observed.some(h=>h.date===f.target)).sort((a,b)=>b.target.localeCompare(a.target))[0];
+ const pendingText=pending?`<p><b>Gespeicherte Prognose für ${dateLabel(pending.target)}${pending.invalid?' (ungültig nach Datenkorrektur)':''}:</b> ${signed(pending.base)} · Spanne ${signed(pending.low)} bis ${signed(pending.high)}</p>`:'';
+ const rows=comparisons.slice(0,5).map(({f,h})=>`<div class="summaryline"><span>${dateLabel(f.target)}${f.invalid?' · Basis nachträglich geändert':''}<br>Prognose ${signed(f.base)} · Ist ${signed(h.delta)}<br><small>Spanne ${signed(f.low)} bis ${signed(f.high)}</small></span><b>${f.invalid?'Nicht bewerten':`${h.delta>=f.low&&h.delta<=f.high?'In der Spanne':'Außerhalb der Spanne'}<br>Abweichung ${signed(h.delta-f.base)}`}</b></div>`).join('');
+ return `<div class="panel"><h3>Prognose-Abgleich</h3>${pendingText}${rows||'<p class="hint">Noch kein Ist-Abgleich. Es zählen nur vor der Eingabe gespeicherte Prognosen – keine rückwirkend berechneten Treffer.</p>'}<p class="hint">Abweichung = Ist minus Prognosemitte. Nach jeder neuen Tagesänderung wird die Prognose für den Folgetag gespeichert, sofern genügend aktuelle Tageswerte vorliegen. Nachrichtenänderungen überschreiben gespeicherte Vorhersagen nicht. Keine automatische Modelloptimierung.</p></div>`;
+}
+
 function prediction(p){
  const all=deltas(p),seq=[];for(let i=all.length-1;i>=0;i--){const h=all[i];if(h.delta==null||(seq.length&&dayNumber(seq[0].date)-dayNumber(h.date)!==1))break;seq.unshift(h);if(seq.length===14)break;}
  const n=seq.length,last=seq.at(-1),age=last?dayNumber(today())-dayNumber(last.date):Infinity,values=seq.map(h=>h.delta),mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
@@ -238,9 +291,9 @@ function prediction(p){
  return {n,last,age,fast,slow,momentum,acc,sd,news,active,usable,base,low,high,herd,rsi,direction:!usable?'Noch keine belastbare Prognose':low>0?'Steigend':high<0?'Fallend':'Unsicher / Richtungswechsel möglich'};
 }
 function renderPredictions(){
- if(!$('predictionCards'))return;
+ if(!$('predictionCards'))return;captureForecasts();
  $('signalPlayer').innerHTML=state.players.filter(p=>p.status==='mine').map(p=>`<option>${esc(p.name)}</option>`).join('');
- $('predictionCards').innerHTML=state.players.filter(p=>p.status==='mine').map(p=>{const f=prediction(p),linked=(state.signals||[]).filter(s=>norm(s.player)===norm(p.name));return `<article class="panel"><h2>${esc(p.name)} <span class="hint">${esc(p.club)}</span></h2>${chartContextHTML(p)}<h3 class="${f.usable&&f.high<0?'negative':f.usable&&f.low>0?'positive':'muted'}">${f.direction}</h3><p>${f.usable?`Nächster Tageswert nach ${dateLabel(f.last.date)}: Trendmitte <b>${signed(f.base)}</b><br>Szenariospanne inkl. Nachrichtensignal: <b>${signed(f.low)} bis ${signed(f.high)}</b>`:'Mindestens drei aufeinanderfolgende Tagesänderungen und letzter Wert von heute/gestern nötig.'}</p><p class="hint">${f.n} zusammenhängende Werte · Stand ${f.last?dateLabel(f.last.date):'fehlt'} · Aussagekraft ${!f.usable?'unzureichend':f.n<7?'sehr gering':'begrenzt, nicht statistisch kalibriert'}</p><div class="summaryline"><span>EMA 3 / EMA 7 der Tagesänderung</span><b>${f.n?signed(f.fast):'—'} / ${f.slow==null?'ab 7 Tagen':signed(f.slow)}</b></div><div class="summaryline"><span>Beschleunigung zum Vortag</span><b>${f.acc==null?'—':signed(f.acc)}</b></div><div class="summaryline"><span>Schwankung (Standardabweichung)</span><b>${f.n>=3?signed(f.sd):'ab 3 Tagen'}</b></div><div class="summaryline"><span>RSI 14 (einfacher Durchschnitt)</span><b>${f.rsi==null?'ab 14 Tagen':f.rsi.toFixed(0)}</b></div><p class="hint">${f.herd} Handelsvolumen und tatsächliche Kauf-/Verkaufszahlen fehlen.</p><p>${f.usable?(f.high<0?(state.lineup.includes(p.id)?'Startelfspieler: Verkauf nur mit passendem Ersatz abwägen.':'Verkauf prüfen, wenn sportlich entbehrlich.'):f.low>0?'Halten / beobachten. Positiver Trend garantiert keinen weiteren Anstieg.':'Abwarten und nächste Tagesänderung prüfen.'):'Erst weitere Tageswerte erfassen; kein automatisches Kauf-/Verkaufssignal.'} ${f.active.some(s=>s.impact<0)?'Negatives Nachrichtensignal: Einsatzlage vor der Entscheidung prüfen.':''}</p><button data-history="${esc(p.id)}">Tageswerte</button> <a target="_blank" rel="noopener noreferrer" href="https://www.google.com/search?q=${encodeURIComponent('site:ligainsider.de '+p.name+' '+p.club)}">LigaInsider suchen ↗</a><hr class="divider"><h3>Nachrichten & Gerüchte</h3>${linked.map(s=>`<p><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)} ↗</a><br><small>${dateLabel(s.date)} · ${s.kind==='rumor'?'Unbestätigtes Gerücht':'Bericht (keine unabhängige Bestätigung)'} · Wirkung: ${s.impact<0?'negativ':s.impact>0?'positiv':'neutral'} · ${dayNumber(today())-dayNumber(s.date)>7?'veraltet, ohne Modelleffekt':'im Szenario berücksichtigt'}</small><br><span class="hint">${esc(s.note)}</span> <button class="small" data-signal-delete="${esc(s.id)}">Löschen</button></p>`).join('')||'<p class="hint">Keine Nachricht hinterlegt. Das bedeutet nicht, dass keine Nachrichten existieren.</p>'}</article>`;}).join('');
+ $('predictionCards').innerHTML=state.players.filter(p=>p.status==='mine').map(p=>{const f=prediction(p),linked=(state.signals||[]).filter(s=>norm(s.player)===norm(p.name));return `<article class="panel"><h2>${esc(p.name)} <span class="hint">${esc(p.club)}</span></h2>${chartContextHTML(p)}${forecastTrackingHTML(p)}<h3 class="${f.usable&&f.high<0?'negative':f.usable&&f.low>0?'positive':'muted'}">${f.direction}</h3><p>${f.usable?`Aktuelle Neuberechnung für ${dateLabel(nextForecastDay(f.last.date))}: Trendmitte <b>${signed(f.base)}</b><br>Szenariospanne inkl. Nachrichtensignal: <b>${signed(f.low)} bis ${signed(f.high)}</b>`:'Mindestens drei aufeinanderfolgende Tagesänderungen und letzter Wert von heute/gestern nötig.'}</p><p class="hint">${f.n} zusammenhängende Werte · Stand ${f.last?dateLabel(f.last.date):'fehlt'} · Aussagekraft ${!f.usable?'unzureichend':f.n<7?'sehr gering':'begrenzt, nicht statistisch kalibriert'}</p><div class="summaryline"><span>EMA 3 / EMA 7 der Tagesänderung</span><b>${f.n?signed(f.fast):'—'} / ${f.slow==null?'ab 7 Tagen':signed(f.slow)}</b></div><div class="summaryline"><span>Beschleunigung zum Vortag</span><b>${f.acc==null?'—':signed(f.acc)}</b></div><div class="summaryline"><span>Schwankung (Standardabweichung)</span><b>${f.n>=3?signed(f.sd):'ab 3 Tagen'}</b></div><div class="summaryline"><span>RSI 14 (einfacher Durchschnitt)</span><b>${f.rsi==null?'ab 14 Tagen':f.rsi.toFixed(0)}</b></div><p class="hint">${f.herd} Handelsvolumen und tatsächliche Kauf-/Verkaufszahlen fehlen.</p><p>${f.usable?(f.high<0?(state.lineup.includes(p.id)?'Startelfspieler: Verkauf nur mit passendem Ersatz abwägen.':'Verkauf prüfen, wenn sportlich entbehrlich.'):f.low>0?'Halten / beobachten. Positiver Trend garantiert keinen weiteren Anstieg.':'Abwarten und nächste Tagesänderung prüfen.'):'Erst weitere Tageswerte erfassen; kein automatisches Kauf-/Verkaufssignal.'} ${f.active.some(s=>s.impact<0)?'Negatives Nachrichtensignal: Einsatzlage vor der Entscheidung prüfen.':''}</p><button data-history="${esc(p.id)}">Tageswerte</button> <a target="_blank" rel="noopener noreferrer" href="https://www.google.com/search?q=${encodeURIComponent('site:ligainsider.de '+p.name+' '+p.club)}">LigaInsider suchen ↗</a><hr class="divider"><h3>Nachrichten & Gerüchte</h3>${linked.map(s=>`<p><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)} ↗</a><br><small>${dateLabel(s.date)} · ${s.kind==='rumor'?'Unbestätigtes Gerücht':'Bericht (keine unabhängige Bestätigung)'} · Wirkung: ${s.impact<0?'negativ':s.impact>0?'positiv':'neutral'} · ${dayNumber(today())-dayNumber(s.date)>7?'veraltet, ohne Modelleffekt':'im Szenario berücksichtigt'}</small><br><span class="hint">${esc(s.note)}</span> <button class="small" data-signal-delete="${esc(s.id)}">Löschen</button></p>`).join('')||'<p class="hint">Keine Nachricht hinterlegt. Das bedeutet nicht, dass keine Nachrichten existieren.</p>'}</article>`;}).join('');
 }
 function bindPredictions(){
  $('signalDate').max=today();$('signalDate').value=today();
